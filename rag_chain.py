@@ -116,7 +116,7 @@ def answer(query, chat_history=None):
 
     if USE_GROQ:
         response = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=messages,
             temperature=0.2
         )
