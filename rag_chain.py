@@ -33,7 +33,6 @@ text_collection = chroma_client.get_or_create_collection("kashi")
 image_collection = chroma_client.get_or_create_collection("kashi_images")
 
 _embed_model = None
-_clip_model = None
 
 
 def get_embedder():
@@ -41,13 +40,6 @@ def get_embedder():
     if _embed_model is None:
         _embed_model = SentenceTransformer(EMBED_MODEL_NAME)
     return _embed_model
-
-
-def get_clip():
-    global _clip_model
-    if _clip_model is None:
-        _clip_model = SentenceTransformer("clip-ViT-B-32")
-    return _clip_model
 
 
 def embed_query(text):
@@ -66,13 +58,9 @@ def retrieve_text(query, k=4):
 
 
 def retrieve_images(query, k=3):
-    # Skip images on cloud to save RAM (CLIP is ~600 MB)
-    if USE_GROQ:
-        return []
     if image_collection.count() == 0:
         return []
-    model = get_clip()
-    query_emb = model.encode(query, convert_to_numpy=True).tolist()
+    query_emb = get_embedder().encode(query, convert_to_numpy=True).tolist()
     results = image_collection.query(
         query_embeddings=[query_emb],
         n_results=k
@@ -144,7 +132,11 @@ if __name__ == "__main__":
             break
         result = answer(q, history)
         print("\nAnswer:", result["answer"])
-        print("Sources:", result["sources"])
+        print("\nSources:", result["sources"])
+        print(f"\nImages found: {len(result.get('images', []))}")
+        for img in result.get("images", []):
+            print(f"  - {img['caption'][:60]}")
+            print(f"    {img['url'][:80]}")
         print("-" * 60)
         history.append({"role": "user", "content": q})
         history.append({"role": "assistant", "content": result["answer"]})
