@@ -1,47 +1,58 @@
 import os
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
-import chromadb
 
-load_dotenv()
+# --- Detect environment and load Groq key ---
+try:
+    import streamlit as st
+    GROQ_KEY = st.secrets.get("GROQ_API_KEY", "")
+except Exception:
+    GROQ_KEY = ""
+
+if not GROQ_KEY:
+    load_dotenv()
+    GROQ_KEY = os.getenv("GROQ_API_KEY", "")
+
+USE_GROQ = bool(GROQ_KEY)
+
+import chromadb
+from sentence_transformers import SentenceTransformer
 
 CHROMA_PATH = "vectorstore"
-CHAT_MODEL = "llama3.2"
-
-# Detect mode: if GROQ_API_KEY is set, we're on the cloud
-USE_GROQ = bool(os.getenv("GROQ_API_KEY"))
+EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
 
 if USE_GROQ:
     from groq import Groq
-    groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-    print("☁️ Running in Cloud Mode (Groq API)")
+    groq_client = Groq(api_key=GROQ_KEY)
+    print("☁️ Cloud Mode (Groq)")
 else:
     import ollama
-    print("💻 Running in Local Mode (Ollama)")
+    print("💻 Local Mode (Ollama)")
 
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 text_collection = chroma_client.get_or_create_collection("kashi")
 image_collection = chroma_client.get_or_create_collection("kashi_images")
 
+_embed_model = None
 _clip_model = None
+
+
+def get_embedder():
+    global _embed_model
+    if _embed_model is None:
+        _embed_model = SentenceTransformer(EMBED_MODEL_NAME)
+    return _embed_model
+
 
 def get_clip():
     global _clip_model
     if _clip_model is None:
-        print("Loading CLIP for image retrieval...")
         _clip_model = SentenceTransformer("clip-ViT-B-32")
     return _clip_model
 
+
 def embed_query(text):
-    """Embed text for the text collection."""
-    if USE_GROQ:
-        # Groq doesn't offer embeddings, so we use a local small model instead
-        # This is lightweight enough to run on free cloud tiers
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        return model.encode(text, convert_to_numpy=True).tolist()
-    else:
-        resp = ollama.embeddings(model="nomic-embed-text", prompt=text)
-        return resp["embedding"]
+    return get_embedder().encode(text, convert_to_numpy=True).tolist()
+
 
 def retrieve_text(query, k=4):
     query_embedding = embed_query(query)
@@ -53,7 +64,11 @@ def retrieve_text(query, k=4):
     metadatas = results["metadatas"][0]
     return list(zip(docs, metadatas))
 
+
 def retrieve_images(query, k=3):
+    # Skip images on cloud to save RAM (CLIP is ~600 MB)
+    if USE_GROQ:
+        return []
     if image_collection.count() == 0:
         return []
     model = get_clip()
@@ -72,6 +87,7 @@ def retrieve_images(query, k=3):
             "license": meta.get("license", "unknown"),
         })
     return images
+
 
 def answer(query, chat_history=None):
     if chat_history is None:
@@ -107,7 +123,7 @@ def answer(query, chat_history=None):
         answer_text = response.choices[0].message.content
     else:
         response = ollama.chat(
-            model=CHAT_MODEL,
+            model="llama3.2",
             messages=messages,
             options={"temperature": 0.2}
         )
@@ -118,6 +134,7 @@ def answer(query, chat_history=None):
         "sources": sources,
         "images": images,
     }
+
 
 if __name__ == "__main__":
     history = []

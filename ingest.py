@@ -1,11 +1,15 @@
 import os
 import glob
 import chromadb
-import ollama
+from sentence_transformers import SentenceTransformer
 
 CHROMA_PATH = "vectorstore"
 COLLECTION_NAME = "kashi"
-EMBED_MODEL = "nomic-embed-text"
+EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
+
+print("Loading embedder...")
+embed_model = SentenceTransformer(EMBED_MODEL_NAME)
+print("✅ Embedder loaded.")
 
 
 def chunk_text(text, chunk_size=800, overlap=100):
@@ -33,21 +37,8 @@ def chunk_text(text, chunk_size=800, overlap=100):
     return chunks
 
 
-def embed_texts(texts):
-    """Embed a list of texts using Ollama. Returns list of vectors."""
-    embeddings = []
-    for i, t in enumerate(texts):
-        resp = ollama.embeddings(model=EMBED_MODEL, prompt=t)
-        embeddings.append(resp["embedding"])
-        if (i + 1) % 10 == 0:
-            print(f"  embedded {i + 1}/{len(texts)}")
-    return embeddings
-
-
 def ingest():
     chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-
-    # Fresh start every run
     try:
         chroma_client.delete_collection(COLLECTION_NAME)
     except Exception:
@@ -71,11 +62,11 @@ def ingest():
         print(f"  {fname}: {len(chunks)} chunks")
 
     if not all_chunks:
-        print("No chunks found. Add .txt files to data/")
+        print("No chunks found.")
         return
 
-    print(f"Embedding {len(all_chunks)} chunks with {EMBED_MODEL}...")
-    embeddings = embed_texts(all_chunks)
+    print(f"Embedding {len(all_chunks)} chunks with {EMBED_MODEL_NAME}...")
+    embeddings = embed_model.encode(all_chunks, show_progress_bar=True, convert_to_numpy=True).tolist()
 
     collection.add(
         documents=all_chunks,
@@ -83,7 +74,7 @@ def ingest():
         metadatas=all_metadatas,
         ids=all_ids
     )
-    print(f"✅ Stored {len(all_chunks)} chunks in ChromaDB.")
+    print(f"✅ Stored {len(all_chunks)} chunks.")
 
 
 if __name__ == "__main__":
