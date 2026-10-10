@@ -1,6 +1,14 @@
+# Virtual Environment
 venv/
 __pycache__/
 *.pyc
+
+# Secrets
 .env
-vectorstore/
+keep_safe.txt
+
+# Streamlit secrets
 .streamlit/secrets.toml
+
+# Vector store — REMOVED so it uploads
+# vectorstore/
