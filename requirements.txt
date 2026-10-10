@@ -1,0 +1,8 @@
+streamlit
+ollama
+groq
+chromadb
+sentence-transformers
+pillow
+requests
+python-dotenv
